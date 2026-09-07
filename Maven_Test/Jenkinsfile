@@ -52,13 +52,30 @@ pipeline {
                     returnStdout: true
                 ).trim()
 
+                def banner = (result == 'SUCCESS')
+                    ? '✅ Everything looks good'
+                    : "❌ ${result} — see BUILD ANALYSIS below / summary.txt artifact"
+
                 echo '================ BUILD ANALYSIS ================'
                 echo summary
                 echo '=================================================='
 
-                currentBuild.description = (result == 'SUCCESS')
-                    ? '✅ Everything looks good'
-                    : "❌ ${result} — see 'BUILD ANALYSIS' in console log"
+                // Fallback #1: repeat a loud, greppable banner as the LAST
+                // lines of console output. Jenkins' Console Output page
+                // shows a finished build's full log with no auto-scroll, so
+                // this is the part you land on / see without hunting for it,
+                // and it's an easy Ctrl+F target ("BUILD RESULT") either way.
+                echo '#################################################'
+                echo "##  BUILD RESULT: ${banner}"
+                echo '#################################################'
+
+                // Fallback #2: a standalone summary.txt artifact — open it
+                // directly from the build's "Build Artifacts" list with one
+                // click, no console log scrolling/searching required at all.
+                writeFile file: 'summary.txt', text: "${banner}\n\n${summary}\n"
+                archiveArtifacts artifacts: 'summary.txt', allowEmptyArchive: true
+
+                currentBuild.description = banner
             }
         }
     }
