@@ -1,0 +1,65 @@
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    // If Maven is managed as a Jenkins global tool rather than being on the
+    // agent's PATH, uncomment this and set the name to match your
+    // "Manage Jenkins > Tools > Maven installations" entry.
+    // tools {
+    //     maven 'Maven 3'
+    // }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build & Test') {
+            steps {
+                script {
+                    // Run the Maven build, tee the full output to build.log,
+                    // and capture the real exit code even through the pipe.
+                    def status = sh(
+                        script: '''
+                            set -o pipefail
+                            mvn -B clean test 2>&1 | tee build.log
+                        ''',
+                        returnStatus: true
+                    )
+                    if (status != 0) {
+                        currentBuild.result = 'FAILURE'
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'build.log', allowEmptyArchive: true
+            script {
+                def result = currentBuild.currentResult // SUCCESS, FAILURE, UNSTABLE, ...
+
+                sh 'chmod +x scripts/analyze_build_log.sh'
+                def summary = sh(
+                    script: "scripts/analyze_build_log.sh build.log ${result}",
+                    returnStdout: true
+                ).trim()
+
+                echo '================ BUILD ANALYSIS ================'
+                echo summary
+                echo '=================================================='
+
+                currentBuild.description = (result == 'SUCCESS')
+                    ? '✅ Everything looks good'
+                    : "❌ ${result} — see 'BUILD ANALYSIS' in console log"
+            }
+        }
+    }
+}
